@@ -85,6 +85,9 @@ public class Breezy {
             WindDirectionSavedData.resetWindDirection(world.random);
             
             world.players().forEach(player -> {
+                var level = player.getLevel();
+                if (level.isClientSide) return;
+
                 WindDirectionSavedData data = ((ServerLevel) player.getLevel()).getDataStorage().computeIfAbsent(WindDirectionSavedData::new, () -> new WindDirectionSavedData(player.getLevel().getRandom()), Breezy.MOD_ID + ".savedata");
                 BreezyNetworking.sendToPlayer(new WindDirectionPacket(data), (ServerPlayer) player);
             });
