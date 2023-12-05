@@ -36,9 +36,16 @@ import software.bernie.geckolib3.core.manager.AnimationFactory;
 import java.util.List;
 
 public class HotAirBalloonEntity extends Animal implements IAnimatable, IAnimationTickable {
-    private static final EntityDataAccessor<Integer> LITNESS = SynchedEntityData.defineId(HotAirBalloonEntity.class, EntityDataSerializers.INT);
-    private static final EntityDataAccessor<Integer> SANDBAGS = SynchedEntityData.defineId(HotAirBalloonEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> LITNESS = SynchedEntityData.defineId(HotAirBalloonEntity.class,
+            EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Integer> SANDBAGS = SynchedEntityData.defineId(HotAirBalloonEntity.class,
+            EntityDataSerializers.INT);
     private final AnimationFactory factory = new AnimationFactory(this);
+
+    private int hitCounter = 0;
+    private int projectileHitCounter = 0;
+    private int maxHitCounter = 4;
+    private int maxProjectileHitCounter = 2;
 
     public HotAirBalloonEntity(EntityType<? extends Animal> type, Level level) {
         super(type, level);
@@ -75,29 +82,52 @@ public class HotAirBalloonEntity extends Animal implements IAnimatable, IAnimati
             setLitness(0);
         }
 
-        List<AbstractArrow> list = this.level.getEntitiesOfClass(AbstractArrow.class,getBoundingBox().inflate(1.01F));
+        // List<AbstractArrow> list = this.level.getEntitiesOfClass(AbstractArrow.class, getBoundingBox().inflate(1.01F));
 
-//        if (!list.isEmpty()) {
-            for (AbstractArrow arrow : list) {
-                if (!arrow.inGround) {
-                    discard();
-                    playSound(SoundEvents.GENERIC_EXPLODE, 0.25F, 3.0F);
-                    arrow.discard();
-                    // todo - fix partciles
-                    for (int i = 0; i < 10; i++) {
-                        level.addParticle(ParticleTypes.EXPLOSION, getRandomX(1.0D), getRandomY(), getRandomZ(1.0D), 0, 0, 0);
-                    }
+        // if (!list.isEmpty()) {
+        //     this.projectileHitCounter = 0;
+
+        //     for (AbstractArrow arrow : list) {
+        //         if (!arrow.inGround) {
+        //             this.projectileHitCounter++;
+        //             arrow.discard();
+        //         }
+        //     }
+
+            if (this.tickCount % 10 == 0 && this.projectileHitCounter >= this.maxProjectileHitCounter) {
+                this.projectileHitCounter = 0;
+
+                playSound(SoundEvents.GENERIC_EXPLODE, 5.0F, 3.0F);
+
+                // todo - fix particles
+                for (int i = 0; i < 5; i++) {
+                    level.addParticle(ParticleTypes.SMOKE, getX() + 1.0D, getY() + 2.35D, getZ() + 1.0D,
+                        getDeltaMovement().x, 0.1D, getDeltaMovement().z);
+    
+                    level.addParticle(ParticleTypes.EXPLOSION, getX() + 1.0D, getY() + 2.35D, getZ() + 1.0D,
+                        getDeltaMovement().x, 0.1D, getDeltaMovement().z);
                 }
-//            }
+
+                discard();
+            }
+        // }
+
+        if (this.hitCounter >= this.maxHitCounter) {
+            this.hitCounter = 0;
+
+            discard();
+            playSound(SoundEvents.ITEM_FRAME_BREAK, 1.0F, 1.0F);
+            spawnAtLocation(new ItemStack(BreezyItems.HOT_AIR_BALLOON.get()));
         }
 
         // Flame particle
-        /*
-        if (tickCount % 10 == 0 && getLitness() > 0) {
+
+        if (tickCount % 20 == 0 && getLitness() > 0) {
             for (int i = 0; i < getLitness(); i++) {
-                level.addParticle(ParticleTypes.FLAME, getX(), getY() + 2.35D,  getZ(), getDeltaMovement().x, 0.1D, getDeltaMovement().z);
+                level.addParticle(ParticleTypes.FLAME, getX(), getY() + 2.35D, getZ(),
+                        getDeltaMovement().x, 0.1D, getDeltaMovement().z);
             }
-        }*/
+        }
     }
 
     @Override
@@ -112,7 +142,8 @@ public class HotAirBalloonEntity extends Animal implements IAnimatable, IAnimati
                 playSound(SoundEvents.CAMPFIRE_CRACKLE, 1.0F, 1.0F);
                 setLitness(getLitness() + 1);
                 swing(hand);
-                player.getItemInHand(hand).hurtAndBreak(1, player, p -> p.broadcastBreakEvent(player.getUsedItemHand()));
+                player.getItemInHand(hand).hurtAndBreak(1, player,
+                        p -> p.broadcastBreakEvent(player.getUsedItemHand()));
             }
         }
 
@@ -179,7 +210,8 @@ public class HotAirBalloonEntity extends Animal implements IAnimatable, IAnimati
 
     private void move() {
         if (!level.isClientSide) {
-            WindDirectionSavedData data = ((ServerLevel) level).getDataStorage().computeIfAbsent(WindDirectionSavedData::new, () -> new WindDirectionSavedData(random), Breezy.MOD_ID + ".savedata");
+            WindDirectionSavedData data = ((ServerLevel) level).getDataStorage().computeIfAbsent(
+                    WindDirectionSavedData::new, () -> new WindDirectionSavedData(random), Breezy.MOD_ID + ".savedata");
 
             Direction direction = data.getWindDirection(blockPosition().getY(), level);
 
@@ -236,7 +268,36 @@ public class HotAirBalloonEntity extends Animal implements IAnimatable, IAnimati
 
     @Override
     public boolean hurt(DamageSource source, float amount) {
-        return source == DamageSource.OUT_OF_WORLD;
+        // DEFAULT
+        if (source == DamageSource.OUT_OF_WORLD) {
+            return true;
+        }
+
+        if (source.isCreativePlayer() || this.hitCounter >= 4) {
+            this.hitCounter = 4;
+
+            return false;
+        }
+
+        if (source.isProjectile()) {
+            this.projectileHitCounter++;
+
+            return true;
+        } else if (source.getEntity() instanceof Player) {
+            this.hitCounter++;
+
+            return false;
+        }
+
+        if (source.isExplosion()) {
+            return true;
+        }
+
+        if (source == DamageSource.IN_FIRE || source == DamageSource.ON_FIRE || source == DamageSource.LAVA) {
+            return true;
+        }
+
+        return false;
     }
 
     @Nullable
@@ -246,7 +307,8 @@ public class HotAirBalloonEntity extends Animal implements IAnimatable, IAnimati
     }
 
     @Override
-    public void registerControllers(AnimationData data) {}
+    public void registerControllers(AnimationData data) {
+    }
 
     @Override
     public AnimationFactory getFactory() {
